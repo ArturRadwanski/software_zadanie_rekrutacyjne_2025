@@ -8,7 +8,13 @@ import setup_frames
 import asyncio
 import time
 
+
 epsilon = 1e-10
+cm = CommunicationManager()
+
+
+#global movement data
+
 last_altitude = 0
 last_time = 0
 velocity = 0
@@ -19,7 +25,8 @@ running = False
 controls:dict[ui.button] = {}
 tables:dict[ui.tab_panel] = {}
 
-cm = CommunicationManager()
+
+
 #global data
 sensors_data = {
     "State": "IDLE",
@@ -51,17 +58,8 @@ def root():
 def wait_for_fuel(frame: Frame):
     fuel_level_update(frame)
     if 100 - frame.payload[0] < epsilon: #float inaccuracy
-        servo_close_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.SERVO, 
-                           0, # fuel intake 
-                           ids.DataTypeID.INT16,
-                           ids.OperationID.SERVO.value.POSITION,
-                           (100,) # 0 is for open position, 100 is for closed
-                           )
-        cm.push(servo_close_frame)
+        
+        cm.push(setup_frames.fuel_intake_close_frame)
         cm.send()
         sensors_data["State"] = "FUEL FILLED"
         controls["start_btn"].enable()
@@ -71,40 +69,17 @@ def wait_for_fuel(frame: Frame):
 def wait_for_oxidizer(frame: Frame):
     oxidizer_level_update(frame)
     if 100 - frame.payload[0] < epsilon:
-        servo_close_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.SERVO, 
-                           1, # oxidizer intake 
-                           ids.DataTypeID.INT16,
-                           ids.OperationID.SERVO.value.POSITION,
-                           (100,) # 0 is for open position, 100 is for closed
-                           )
-        cm.push(servo_close_frame)
+        cm.push(setup_frames.oxidizer_intake_close_frame)
         cm.send()
         sensors_data["State"] = "FILLING FUEL"
-        servo_open_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.SERVO, 
-                           0, # fuel intake 
-                           ids.DataTypeID.INT16,
-                           ids.OperationID.SERVO.value.POSITION,
-                           (0,) # 0 is for open position, 100 is for closed
-                           )
-        cm.push(servo_open_frame)
+        
+        cm.push(setup_frames.fuel_intake_open_frame)
         cm.send()
 
         cm.clear_callbacks()
-        try:
-            cm.register_callback(wait_for_fuel, setup_frames.fuel_frame)
-            cm.register_callback(oxidizer_pressure_update, setup_frames.oxidizer_pressure_frame)
-        except UnregisteredCallbackError as e:
-            print(f"unregistered frame received: {e.frame}")
-        except:
-            pass
+        cm.register_callback(wait_for_fuel, setup_frames.fuel_frame)
+        cm.register_callback(oxidizer_pressure_update, setup_frames.oxidizer_pressure_frame)
+
         
         servo_data["oxidizer_intake"] = "100"
         servo_data["fuel_intake"] = "0"
@@ -112,99 +87,40 @@ def wait_for_oxidizer(frame: Frame):
 
 def fuel_action():
         
-        print("xd")
         controls["fuel_btn"].disable()
         sensors_data["State"] = "FILLING OXIDIZER"
-        servo_open_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.SERVO, 
-                           1, # oxidizer intake 
-                           ids.DataTypeID.INT16,
-                           ids.OperationID.SERVO.value.POSITION,
-                           (0,) # 0 is for open position, 100 is for closed
-                           )
-        cm.push(servo_open_frame)
+        cm.push(setup_frames.oxidizer_intake_open_frame)
         cm.send()
         
 
         
         cm.register_callback(wait_for_oxidizer,setup_frames.oxidizer_frame)
+        cm.register_callback(oxidizer_pressure_update, setup_frames.oxidizer_pressure_frame)
         servo_data["oxidizer_intake"] = "0"
         
 def parachute(frame: Frame):
     altitude_update(frame)
     global last_altitude, running
-    parachute_open_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.RELAY, 
-                           2, # parachute
-                           ids.DataTypeID.FLOAT,
-                           ids.OperationID.RELAY.value.OPEN,
-                           ()
-                           )
+    
     if last_altitude > 10:
         running = True
     
     if velocity < 1 and running:
-        cm.push(parachute_open_frame)
+        cm.push(setup_frames.parachute_open_frame)
         cm.send()
         relays_data["parachute"] = "OPEN"
         sensors_data["State"] = "PARACHUTE_DEPLOYED"
     
 
 def ignition():
-    relay_close_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.RELAY, 
-                           0, # oxidizer heater
-                           ids.DataTypeID.FLOAT,
-                           ids.OperationID.RELAY.value.CLOSE,
-                           ()
-                           )
-    open_fuel = Frame(ids.BoardID.SOFTWARE, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.FEED, 
-                           ids.BoardID.ROCKET, 
-                           ids.DeviceID.SERVO, 
-                           2, # fuel main
-                           ids.DataTypeID.INT16,
-                           ids.OperationID.SERVO.value.POSITION,
-                           (0,))
-    
 
-    open_oxidizer = Frame(ids.BoardID.SOFTWARE, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.ROCKET, 
-                           ids.DeviceID.SERVO, 
-                           3, # fuel main
-                           ids.DataTypeID.INT16,
-                           ids.OperationID.SERVO.value.POSITION,
-                           (0,))
-
-    open_relay_igniter = Frame(ids.BoardID.SOFTWARE, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.ROCKET, 
-                           ids.DeviceID.RELAY, 
-                           1, # igniter
-                           ids.DataTypeID.FLOAT,
-                           ids.OperationID.RELAY.value.OPEN)
 
     cm.register_callback(parachute, setup_frames.altitude_frame)
-    
-    relays_data
 
-    cm.push(relay_close_frame)
-    cm.push(open_fuel)
-    cm.push(open_oxidizer)
-    cm.push(open_relay_igniter)
+    cm.push(setup_frames.oxidizer_heater__close_frame)
+    cm.push(setup_frames.open_fuel_main_frame)
+    cm.push(setup_frames.open_oxidizer_main_frame)
+    cm.push(setup_frames.open_igniter_frame)
     
     cm.send()
     cm.send()
@@ -223,7 +139,6 @@ def wait_for_pressure(frame: Frame):
     if frame.payload[0] > 55:
         cm.clear_callbacks()
         ignition()
-        #cm.register_callback(setup_frames.altitude_frame)
 
 def start_rocket():
     controls["start_btn"].disable()
@@ -334,23 +249,8 @@ def altitude_update(frame: Frame):
     last_altitude = cur_altitude
     last_time = cur_time
 
-    sensors_data["Velocity"] = "{:.2} m/s".format(velocity) 
+    sensors_data["Velocity"] = "{:.2f} m/s".format(velocity) 
     
-
-def fuel_intake_update(frame: Frame):
-    servo_data["fuel_intake"] = str(frame.payload[0])
-    
-
-def oxidizer_intake_update(frame: Frame):
-    servo_data["oxidizer_intake"] = str(frame.payload[0])
-    
-
-def fuel_main_update(frame: Frame):
-    servo_data["fuel_main"] = str(frame.payload[0])
-    
-
-def oxidizer_main_update(frame: Frame):
-    servo_data["oxidizer_main"] = str(frame.payload[0])
     
 
 @app.on_startup
@@ -362,16 +262,5 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     cm.change_transport_type(TransportType.TCP)
     cm.connect(TcpSettings("127.0.0.1", 3000))
-   # cm.register_callback(fuel_level_update, setup_frames.fuel_frame)
-    #cm.register_callback(oxidizer_level_update, setup_frames.oxidizer_frame)
-    #cm.register_callback(oxidizer_pressure_update, setup_frames.oxidizer_pressure_frame)
-    #cm.register_callback(altitude_update, setup_frames.altitude_frame)
-    cm.register_callback(fuel_intake_update, setup_frames.fuel_intake_frame)
-    cm.register_callback(oxidizer_intake_update, setup_frames.oxidizer_intake_frame)
-    cm.register_callback(fuel_main_update, setup_frames.fuel_main_frame)
-    cm.register_callback(oxidizer_main_update, setup_frames.oxidizer_main_frame)
 
     ui.run(root)
-
-    
-    # controls["start_btn"].disabled()
