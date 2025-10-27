@@ -55,6 +55,9 @@ def root():
         '/': main_page,
     }).classes('w-full')
 
+
+#callback
+#if fuel tank is full, close the intake and let user press start button
 def wait_for_fuel(frame: Frame):
     fuel_level_update(frame)
     if 100 - frame.payload[0] < epsilon: #float inaccuracy
@@ -66,6 +69,8 @@ def wait_for_fuel(frame: Frame):
         cm.clear_callbacks()
         servo_data["fuel_intake"] = "100"
 
+#callback
+#if oxidizer tank is full, close the intake and start filling fuel tank
 def wait_for_oxidizer(frame: Frame):
     oxidizer_level_update(frame)
     if 100 - frame.payload[0] < epsilon:
@@ -85,19 +90,21 @@ def wait_for_oxidizer(frame: Frame):
         servo_data["fuel_intake"] = "0"
         
 
+#handle Fuel button on_click event
+#fill the oxidizer tank, then forward to fuel via callback
 def fuel_action():
         
-        controls["fuel_btn"].disable()
-        sensors_data["State"] = "FILLING OXIDIZER"
-        cm.push(setup_frames.oxidizer_intake_open_frame)
-        cm.send()
+    controls["fuel_btn"].disable()
+    sensors_data["State"] = "FILLING OXIDIZER"
+    cm.push(setup_frames.oxidizer_intake_open_frame)
+    cm.send()
         
-
         
-        cm.register_callback(wait_for_oxidizer,setup_frames.oxidizer_frame)
-        cm.register_callback(oxidizer_pressure_update, setup_frames.oxidizer_pressure_frame)
-        servo_data["oxidizer_intake"] = "0"
+    cm.register_callback(wait_for_oxidizer,setup_frames.oxidizer_frame)
+    cm.register_callback(oxidizer_pressure_update, setup_frames.oxidizer_pressure_frame)
+    servo_data["oxidizer_intake"] = "0"
         
+#callback monitoring height, calculating velocity and deploying parachute accordingly
 def parachute(frame: Frame):
     altitude_update(frame)
     global last_altitude, running
@@ -112,9 +119,8 @@ def parachute(frame: Frame):
         sensors_data["State"] = "PARACHUTE_DEPLOYED"
     
 
+#close oxidizer heater and handle the procedure
 def ignition():
-
-
     cm.register_callback(parachute, setup_frames.altitude_frame)
 
     cm.push(setup_frames.oxidizer_heater__close_frame)
@@ -134,35 +140,34 @@ def ignition():
     sensors_data["State"] = "FLIGHT"
 
 
+#callback
+#start ignition procedure when oxidizer pressure is optimal
 def wait_for_pressure(frame: Frame):
     oxidizer_pressure_update(frame)
     if frame.payload[0] > 55:
         cm.clear_callbacks()
         ignition()
 
+
+#handle Start button:
+#immidietky disable star button, start heating of oxidizer and register callback for oxidizer pressure
 def start_rocket():
     controls["start_btn"].disable()
-    relay_open_frame = Frame(ids.BoardID.ROCKET, 
-                           ids.PriorityID.LOW, 
-                           ids.ActionID.SERVICE, 
-                           ids.BoardID.SOFTWARE, 
-                           ids.DeviceID.RELAY, 
-                           0, # oxidizer heater
-                           ids.DataTypeID.FLOAT,
-                           ids.OperationID.RELAY.value.OPEN,
-                           ()
-                           )
-    cm.push(relay_open_frame)
+    cm.push(setup_frames.oxidizer_heater_open_frame)
     cm.send()
+    cm.clear_callbacks()
     cm.register_callback(wait_for_pressure, setup_frames.oxidizer_pressure_frame)
     relays_data["oxidizer_heater"] = "OPEN"
 
+#function generates the main page
 def main_page():
+    #add 3 tabs for 3 different tables
     with ui.tabs() as tabs:
         sensors = ui.tab('sensors')
         servos = ui.tab('servos')
         relays = ui.tab('relays')
 
+    #generate tables
     with ui.tab_panels(tabs, value=sensors):
         with ui.tab_panel(sensors):
             tables["sensors"] = ui.table(rows=[
@@ -179,7 +184,7 @@ def main_page():
                 {"parameter": data, "value": relays_data[data]} for data in relays_data
             ])
 
-
+    #synchronise tables with dictionary data
     async def update_table():
         while True:
             for i, key in enumerate(sensors_data):
@@ -194,6 +199,7 @@ def main_page():
                 tables["relays"].rows[i]["value"] = relays_data[key]
             tables["relays"].update() 
 
+            #give control to main program loop
             await asyncio.sleep(1)
 
     asyncio.create_task(update_table())
@@ -210,20 +216,21 @@ def main_page():
 
 
 
+#Listening for messages from server
 async def wait_for_response():
     while True:
         try:
-            cm.receive() # We can handle frames using callbacks or by getting frame right from receive() call
+            cm.receive()
         except TransportTimeoutError:
                 pass
-        except UnregisteredCallbackError as e:
-                # print(f"unregistered frame received: {e.frame}")
+        except UnregisteredCallbackError:
                 pass
+        #give control back to the main loop    
         await asyncio.sleep(0)
 
 
 
-#####Callbacki do aktualizaji danych
+#Callbacks for data updates
 def fuel_level_update(frame: Frame):
     sensors_data["Fuel Level"] = "{:.2f}%".format(frame.payload[0])
 

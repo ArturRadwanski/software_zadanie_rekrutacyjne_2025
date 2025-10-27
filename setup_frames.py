@@ -133,4 +133,15 @@ open_igniter_frame = Frame(ids.BoardID.SOFTWARE,
                            ids.DeviceID.RELAY, 
                            1, # igniter
                            ids.DataTypeID.FLOAT,
-                           ids.OperationID.RELAY.value.OPEN)                           
+                           ids.OperationID.RELAY.value.OPEN)
+
+oxidizer_heater_open_frame = Frame(ids.BoardID.ROCKET, 
+                           ids.PriorityID.LOW, 
+                           ids.ActionID.SERVICE, 
+                           ids.BoardID.SOFTWARE, 
+                           ids.DeviceID.RELAY, 
+                           0, # oxidizer heater
+                           ids.DataTypeID.FLOAT,
+                           ids.OperationID.RELAY.value.OPEN,
+                           ()
+                           )                           
